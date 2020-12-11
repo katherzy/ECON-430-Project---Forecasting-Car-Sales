@@ -1,0 +1,1019 @@
+---
+title: "Project 1: "
+author: " Oai Tran, Andrea Fleming, Ashtin Riad, Katherine Yu"
+date: "`r Sys.Date()`"
+output:
+   pdf_document:
+      fig_caption: true
+      number_sections: true
+---
+\begin{center}
+**Abstract**
+
+\end{center}
+This paper will study the relationship between the unemployment rate and consumer spending, particularly the total car sales in the US. Since a car purchase is an expensive purchase we think that people who are unemployed would probably not make a new car purchase. Empirical data shows that during a recession all consumption drops due to the rise of unemployment and we want to see what happens in particular to a large durable good purchase like a car.\
+
+\newpage
+
+## Introduction:\
+Background on our interests:\
+During the recession, we see a dramatic drop in consumer level spending, due to consumers deciding to re-allocate their capital and be more selective on the type of goods and services they would be consuming. This leads us to want to know what level of change the Unemployment rate (UNRATENSA) would have in relation to a particular section, such as the Total Vehicle Sales (TOTALNSA) data. We will use the data from 1976-01-01 to 2020-10-01 from FRED to study the effect of the unemployment rate on total vehicle sales. We want to understand any relationship between the two, and if there is any correlation, what it would be. Furthermore, we will try to forecast the next level of the unemployment rate and total car sales.\
+
+Details of the data sets:\
+The two time series we will be using are Total Car Sales (TOTALNSA) and Unemployment rate, both not seasonally adjusted, (UNRATENSA) in the U.S. from 1976-01-01 to 2020-10-01. The frequency been use on both data are monthly (12). Total car sales not seasonally adjusted (TOTALNSA) unit is in Thousands of Units, Unemployment rate not seasonally adjusted (UNRATENSA) unit is in Percent.\
+
+## Methodology and Data Analysis with Results:\
+
+```{r, echo=FALSE, warning=FALSE, message= FALSE}
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60))
+```
+
+```{r, echo=FALSE, warning=FALSE, message= FALSE}
+library(forecast)
+library(tseries)
+library(timeSeries)
+library(dplyr)
+library(fGarch)
+library(tidyquant)
+library(ggplot2)
+library(cowplot)
+library(seastests)
+library(vars)
+```
+
+
+Prep data to explore:\
+Using wo() function we tested for seasonality and it is present in both data sets.\
+```{r}
+une = read.csv("UNRATENSA.csv")
+cars = read.csv("TOTALNSA.csv")
+
+cars_ts = ts(cars$TOTALNSA, start = c(1976,1), frequency = 12)
+summary(wo(cars_ts))
+une_ts = ts(une$UNRATENSA, start = c(1976,1), frequency = 12)
+summary(wo(une_ts))
+
+logcars = log(cars_ts)
+```
+
+
+
+This is a test to see if our data sets are stationary and we found out from the results using Dickey-Fuller test, ADF test, below both data are non-stationary and we do this just to give us an insight of the data before explore the two time series.\
+
+```{r}
+#test for stationarity 
+adf.test(cars_ts, alternative="stationary", k=0) 
+adf.test(une_ts, alternative="stationary", k=0) 
+```
+
+### 1 Produce a time-series plot of your data including the respective ACF and PACF plots.\
+plot ACF and PACF individually and use it as way for us to build our model for number 2.\
+
+Exploring the data: 
+```{r, echo=FALSE}
+#look at cars
+#AR(1) based on our PACF wit ha spike at 12 and ACF with 12, 24, 36 .... 
+#MA() use the ACF to find out number: 4 big spikes
+plot(cars_ts, main = 'Car Sales Level')
+plot(decompose(cars_ts))
+plot(decompose(cars_ts, type = "multiplicative"))
+tsdisplay(cars_ts)
+
+#take log of cars
+logcars = log(cars_ts)
+plot(logcars, main = 'Car Sales Log')
+tsdisplay(logcars)
+plot(decompose(logcars))
+
+#look at unemployment
+#AR(1, 0 ,0 ) based on PACF 
+#MA() we dont want to use MA() model bceause ACF has a lot of independent variabales making it a lot more complex.
+plot(une_ts, main = 'Unemployment Rate')
+plot(decompose(une_ts))
+tsdisplay(une_ts)
+```
+When we plot the decomposition of car sales we see that the trend varies widely and has no obvious pattern. In the decomposition this is captured in the trend so the residuals seem normal but we will later capture this trend in the cycles using an ARIMA model instead. The tsdisplay of CARS shows that there are signs of an AR(2) or AR(3) model with seasonality. There is are some pikes in the PACF in the later lags that are not due to seasonality that may be due to also having an MA component. We decide to take the log of CARS since the scale is very large.
+
+
+When we plot the decomposition of UNEMPLOYMENT we see that there is strong seasonality. We also see that the trend would be rather hard to fit to a linear/quadratic/sinusoidal trend like we have learned in class. Like CARS, in the decomposition this is captured in the trend so the residuals seem normal but we will later capture this using an ARIMA model instead. The tsdisplay of UNEMPLOYMENT shows that there are signs of an AR(1) model with seasonality.
+
+### 2. Fit an ARIMA model to each series and comment on the fit. For the next questions, you will instead use the model estimated in (3) for their respective answers.\
+
+We will use auto.arima here to get the base model. We also compare to see how the auto.arima model compares to some other selected models as well.
+
+For log cars the auto.arima gives us : ARIMA(1,0,2)(0,1,2)[12] 
+For unemployment the auto.arima gives us : ARIMA(1,1,1)(2,0,0)[12] 
+
+We are surprised that the model selected for log cars doesn't include differencing since the trend from the decomposition wasn't a good fit for a linear function.
+
+**For Total Car Sales Data:**
+We decided that a ARIMA(1,0,2)(0,1,2)[12] model would fit to our car_sales_ts the best. From the ACF and PACF graphs above, we know that it is an AR(1) using PACF from the original PACF(before we take the first diff()). Furthermore, after takes the first diff(), the ACF and PACF suggest to us there is a MA(2) with some non-seasonal MA(2) because there lot of spikes and it is not showing an decay as AR() model should. These keys characteristics tell us that we cam use the combination of AR and MA model to fit our data. We also use auto.arima() function to check after using ACF and PCF, we notice that a combination of both,ARIMA(1,0,2)(0,1,2)[12], from auto.arima() works best due to AIC=6320.89, and BIC=6346.48 have the smallest values. Not only that by looking at the fit of models individually, the last one fit the best out of the three model, which is ARIMA(1,0,2)(0,1,2)[12].\
+ARMA(1,1) -> AIC = 6922.7.\
+ARMA(1,4) -> AIC = 6893.5.\
+ARIMA(1,0,2)(0,1,2)[12]  -> AIC=6321.05.\
+
+**For Unemployment rate:**
+For our UNRATE_not_ts time series, we will fit ARIMA(1,1,2)(2,0,0)[12]. Here I repeated the same steps as above model car_sales_ts. Using ACF and PACF suggesting us the model would be a combination of AR and MA such as ARMA(1,2) or ARMA(1,4). But by using auto.arima() we learned in class, we found that ARIMA(1,1,2)(2,0,0)[12], gives us a better fit in the forecast than the other models with an AIC= 828.27.\
+ARMA(1,2) -> AIC = 956.6.\
+ARMA(1,4) -> AIC = 949.26.\
+ARIMA(1,1,2)(2,0,0)[12] -> AIC= 828.27.\
+
+
+Using auto.arima() to find a model and use it as a benchmark to help us understand the both of the data better and compare them with other models such as AR and or MA methods. Below are the codes and different models that we are testing.\
+
+```{r}
+cars <- auto.arima(cars_ts)
+summary(cars)
+carslog = auto.arima(logcars)
+summary(carslog)
+unrate <- auto.arima(une_ts)
+summary(unrate)
+```
+
+```{r}
+#fit the model into the data
+#AR1 and MA(2)
+arma1 <- arma(cars_ts, order = c(1,1))
+summary(arma1)
+
+arma1.2 <- arma(cars_ts, order = c(1,4))
+#result: ma2 is not significant 
+summary(arma1.2)
+
+# test out the ARMA
+arma1.1 <- auto.arima(cars_ts)
+arma1.1
+```
+
+Here are the graphs with all the models:
+```{r}
+#plot
+plot(cars_ts, xlab="Year", ylab="Total Car Sales", col="black", lwd=.5, main = 'Model chosen by auto.arima with other for comparison')
+grid()
+lines(arma1$fitted.values, col="red", lwd=.5, lty=1)
+lines(arma1.2$fitted.values, col="seagreen2", lwd=.5, lty=1)
+lines(fitted(arma1.1), col="blue", lwd=.5, lty=1)
+legend("topright", legend=c("Data", "ARMA(1,1)", "ARMA(2,4)", "ARIMA(1,0,2)(0,1,2)[12]"), text.col=1:4, bty="n")
+```
+
+ Unemployment rate:\
+```{r}
+#AR1 and MA(2)
+arma2 <- arma(une_ts, order = c(1,2))
+summary(arma2)
+
+arma2.2 <- arma(une_ts, order = c(1,4))
+#result: ma1 is not significant 
+summary(arma2.2)
+
+#plug in the seasonal
+arma2.1 <- auto.arima(une_ts)
+summary(arma2.1)
+```
+
+```{r}
+#plot
+plot(une_ts, xlab="Year", ylab="Unemployment Rate", col="black", lwd=1, main = 'Model chosen by auto.arima with other for comparison')
+grid()
+lines(arma2$fitted.values, col="red", lwd=.5, lty=1)
+lines(arma2.2$fitted.values, col="seagreen2", lwd=.5, lty=1)
+lines(fitted(arma2.1), col="blue", lwd=.5, lty=1)
+legend("topright", legend=c("Data", "ARMA(1,1)", "ARMA(2,4)", "ARIMA(1,1,2)(2,0,0)"), text.col=1:4, bty="n")
+```
+
+## 3. Fit a model that includes, trend, seasonality and cyclical components. Make sure to discuss your model in detail.\
+
+From the very first ACF and PACF of the original data we get these results (copied again here for convenience):
+
+When we plot the decomposition In the decomposition this is captured in the trend so the residuals seem normal but we will later capture this using an ARIMA model instead. The tsdisplay of CARS shows that there are signs of an AR(2) or AR(3) model with seasonality. There is are some pikes in the PACF in the later lags that are not due to seasonality that may be due to also having an MA component. We decide to take the log of CARS since the scale is very large.\
+
+When we plot the decomposition of UNEMPLOYMENT we see that there is strong seasonality. We also see that the trend would be rather hard to fit to a linear/quadratic/sinusoidal trend like we have learned in class. Like CARS, in the decomposition this is captured in the trend so the residuals seem normal but we will later capture this using an ARIMA model instead. The tsdisplay of UNEMPLOYMENT shows that there are signs of an AR(1) model with seasonality.\
+
+Down below, we are testing our difference AR, MA, ARIMA() models to select the best one to use for our time series. Un on testing, we decided to go with Total car sales final model: diff2.5 model which is ARIMA(1,1,1)x(0,1,1) [12], and unemployment final model: diff3.7 model which is ARIMA(1,1,1)x(2,0,0)[12].\
+
+Below are our method of model selection:\
+
+
+Fitting the models: testing different model to fit in\
+Here is for fitting a non-differenced model for cars: We end up choose quadratic for trend in this test
+
+```{r}
+#fitting a non-differenced model for cars
+
+plot(logcars, main = 'Car Sales Log',xlab="Time", lwd=3, col='skyblue3')
+
+#create time sequence
+t = (as.Date(seq(as.Date("1976/01/01"), by = "month", length.out = length(cars_ts))))
+t = decimal_date(t)
+sint = sin(t)
+cost = cos(t)
+t2 = t^2
+
+t1 = tslm(logcars~trend)
+summary(t1)
+lines(t,t1$fit,col="red3",lwd=1)
+
+t1.1 = tslm(logcars~t+sint+cost)
+summary(t1.1)
+lines(t,t1.1$fit,col="green",lwd=1)
+
+t1.3 = tslm(logcars~t+t2)
+summary(t1.3)
+lines(t,t1.3$fit,col="black",lwd=1)
+
+AIC(t1, t1.1, t1.3)
+
+#We end up choosing the quadratic for trend.
+```
+From the result above, we end up choosing the quadratic for trend since the AIC is the lowest for our total car sales.\
+
+Next, we try to fit an ARIMA model while keeping the trend and not first differencing.
+
+Look at residuals of quadratic trend and ACF and PACF with season dummies:\
+```{r}
+#look at residuals of quadratic trend
+tsdisplay(t1.3$res) #might be S-AR(1) and AR(1) or AR(3) from looking at the ACF and PACF.
+
+#look at ACF and PACF with season dummies
+quadseason = tslm(logcars~t+t2+season)
+plot(logcars, xlab="Time", lwd=3, col='skyblue3', main="With Season")
+summary(quadseason)
+lines(t,quadseason$fit,col="black",lwd=1)
+tsdisplay(quadseason$res) #since spikes in 1-3 persist in PACF from this we try 
+#to fit AR(3) for cycles
+```
+
+The comments on the ACF and PACF are also included in the code. 
+When we look at the residuals for the quadratic trend model we see that there could be S-AR(1) and AR(1) or AR(3) from looking at the ACF and PACF. After trying trend with seasonal dummies, from the residuals we get that spikes in 1-3 persist in PACF from this we try to fit AR(3) for cycles. 
+
+```{r}
+#fit ar models
+ar1=arima(logcars,order=c(3,0,0),xreg = cbind(t, t2),seasonal=list(order=c(1,0,0)))
+plot(logcars, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(ar1),col="green")
+summary(ar1)
+
+ar2=arima(logcars,order=c(3,0,1),xreg = cbind(t, t2),seasonal=list(order=c(1,0,0)))
+plot(logcars, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(ar2),col="orange")
+summary(ar2)
+
+ar3=arima(logcars,order=c(3,0,1),xreg = cbind(t, t2),seasonal=list(order=c(1,0,1)))
+plot(logcars, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(ar3),col="red")
+summary(ar3)
+
+ar4=arima(logcars,order=c(3,0,0),xreg = cbind(t, t2),seasonal=list(order=c(1,0,1)))
+plot(logcars, xlab="Time", lwd=1, col='grey')
+lines(fitted(ar4),col="blue")
+summary(ar4)
+
+tsdisplay(ar1$res)
+tsdisplay(ar2$res)
+tsdisplay(ar3$res)
+tsdisplay(ar4$res)
+
+AIC(ar1, ar2, ar3, ar4)
+
+AIC(ar1, ar2, ar3, ar4,k = log(length(cars_ts)))
+
+#from using the trend and season and building up the model without differencing
+#we discover that the ar3 model is the best in this group.
+
+Box.test(ar3$residuals, type = "Ljung-Box") 
+#residuals is not serially correlated from the results of this test
+```
+
+After trying difference combinations we think might be useful with guidance from our auto.arima model and our previous residuals, Model AR3 which is ARIMA(3,0,1)(1,0,1)[12] ends up being the best model chosen thorugh AIC and BIC of this method of building up trend and seasonality. The Ljung-Box test of the residuals are not serially correlated.
+
+Next we move on to fitting a non-differentiated model for unemployment.\
+```{r}
+#look at trends for unemployment
+ut1 = tslm(une_ts~trend)
+summary(ut1)
+
+plot(une_ts, xlab="Time", lwd=3, col='skyblue3')
+lines(t,ut1$fit,col="red3",lwd=1)
+
+ut1.1 = tslm(une_ts~t+sint+cost)
+summary(ut1.1)
+lines(t,ut1.1$fit,col="green",lwd=1)
+t2 = t^2
+
+ut1.3 = tslm(une_ts~t+t2)
+summary(ut1.3)
+lines(t,ut1.3$fit,col="black",lwd=1)
+
+ut1.4  = lm(log(UNRATENSA)~t, data=une)
+summary(ut1.4)
+lines(t,exp((as.numeric(ut1.4$coefficients[1]))+(as.numeric(ut1.4$coefficients[2]))*t),col="yellow",lwd=1)
+
+#undo exponential
+exponential_fit = exp((as.numeric(ut1.4$coefficients[1]))+(as.numeric(ut1.4$coefficients[2]))*t)
+calc_res = (une$UNRATENSA-exponential_fit)^2
+exp_res = sum(calc_res)/536
+exp_res = sqrt(exp_res)
+print("Exponential Level RMSE:")
+print(exp_res)
+
+
+AIC(ut1, ut1.1, ut1.3, ut1.4) #quadratic turns out to be best
+```
+We do the same thing for unemployment and look at different linear functions of time. From the results and looking at AIC for these trend models, the quadratic has the lowest AIC = 2078.04336	besides the exponential model, which is only very low because the scale of y variable is different. However if we look at RMSE = 1.701222 for exponential model it's a bit higher than the quadratic model RMS = 1.661, so we choose to go with the quadratic.\
+
+We look at residuals of the fitted trend model: 
+```{r}
+#look at residuals of trend
+tsdisplay(ut1.3$res) #might be S-AR(2) since there are spikes at factors of 12
+#in the PACF
+
+#look at residuals with season dummies
+uquadseason = tslm(une_ts~t+t2+season)
+plot(une_ts, xlab="Time", lwd=3, col='skyblue3')
+summary(uquadseason)
+lines(t,uquadseason$fit,col="black",lwd=1)
+tsdisplay(uquadseason$res) 
+#since spikes in 1 persist in PACF we try to fit AR(1) for cycles
+```
+
+Comments of the ACF and PACF displayed are in the code too. When we look at the ACF and PACF of the residuals after fitting a quadratic trend, we see that there might be S-AR(2) since there are spikes at factors of 12 in the PACF. When we look at the residuals with seasonal dummies we see that a spike still persist in the PACF at 1 so this could indicate an AR(1) component to the model. We deduce that there is S-AR(2) and AR(1) as possible components. 
+
+Below we combine the trend component with ARIMA for unemployment.
+
+
+```{r}
+#we try to fit ar models without differencing (using trend)
+
+#we had to transform the time variables due to the computational limits of
+#the ARIMA function
+at = t-1976
+at2 = at^2
+
+uar1=arima(une_ts,order=c(1,0,0),xreg = cbind(at, at2),seasonal=list(order=c(2,0,0)))
+plot(une_ts, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(uar1),col="green")
+summary(uar1)
+tsdisplay(uar1$res)
+
+uar2=arima(une_ts,order=c(1,0,1),xreg = cbind(at, at2),seasonal=list(order=c(2,0,0)))
+plot(une_ts, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(uar2),col="orange")
+summary(uar2)
+tsdisplay(uar2$res)
+
+uar3=arima(une_ts,order=c(1,0,1),xreg = cbind(at, at2),seasonal=list(order=c(2,0,1)))
+plot(une_ts, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(uar3),col="red")
+summary(uar3)
+tsdisplay(uar3$res)
+
+uar4=arima(une_ts,order=c(1,0,0),xreg = cbind(at, at2),seasonal=list(order=c(2,0,1)))
+plot(une_ts, xlab="Time", lwd=1, col='grey')
+lines(fitted(uar4),col="blue")
+summary(uar4)
+tsdisplay(uar4$res)
+
+
+AIC(uar1, uar2, uar3, uar4) #uar3 has the lowest AIC score
+
+Box.test(uar3$res) #residuals are not serially correlated
+```
+After trying out combinations with guidance from auto.arima model and what we learned in class, using AIC we get that UAR3 is the best model. uar3's AIC = 824.4742. The Ljung Box test we find the residuals are not serially correlated. The
+best model is therefore ARIMA(1,0,1)(2,0,1) with trend of t+t^2.\
+
+Below we will use a differenced model instead and then compare the results that we got with the trend/undifferenced model
+```{r}
+#look at ACF and PACF of differenced residuals
+logcars = log(cars_ts)
+cars_diff = diff(logcars)
+plot(cars_diff)
+tsdisplay(cars_diff) #looking at this ACF and PACF there is definitely
+#seasonality that needs to be taken care of
+
+#Since the trend is rather hard to identify we also try fitting a differened arima 
+#model. We include seasonal differencing as well since we have a strong 
+#seasonal pattern.
+
+diff2.1=arima(logcars,order=c(0,1,0),seasonal=list(order=c(0,1,0)))
+plot(logcars, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(diff2.1),col="green")
+summary(diff2.1)
+tsdisplay(diff2.1$res)
+Box.test(diff2.1$residuals, type = "Ljung-Box") #does not pass Ljung Box test
+
+#we try adding AR(1) to the differenced model since spike in PACF for last model
+diff2.2=arima(logcars,order=c(1,1,0),seasonal=list(order=c(0,1,0)))
+plot(logcars, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(diff2.2),col="green")
+summary(diff2.2)
+tsdisplay(diff2.2$res)
+Box.test(diff2.2$residuals, type = "Ljung-Box") #doesn't pass at 10%
+
+#since there is strong spike in ACF at 12 we try adding MA to 
+#seasonality
+diff2.3=arima(logcars,order=c(1,1,0),seasonal=list(order=c(0,1,1)))
+plot(logcars, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(diff2.3),col="green")
+summary(diff2.3)
+tsdisplay(diff2.3$res)
+Box.test(diff2.3$residuals, type = "Ljung-Box") #doesn't pass test
+
+#we change to AR(2) because of a strong spike in PACF at 2 in last model
+diff2.4=arima(logcars,order=c(2,1,0),seasonal=list(order=c(0,1,1)))
+plot(logcars, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(diff2.4),col="green")
+summary(diff2.4)
+tsdisplay(diff2.4$res)
+Box.test(diff2.4$residuals, type = "Ljung-Box") #passes test
+
+#we try AR(1) and MA(1) as well becuase our results from auto.arima indicate
+#there is MA component
+diff2.5=arima(logcars,order=c(1,1,1),seasonal=list(order=c(0,1,1)))
+plot(logcars, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(diff2.5),col="green")
+summary(diff2.5)
+tsdisplay(diff2.5$res)
+Box.test(diff2.5$residuals, type = "Ljung-Box") #passes test
+
+accuracy(diff2.1)
+accuracy(diff2.2)
+accuracy(diff2.3)
+accuracy(diff2.4)
+accuracy(diff2.5)
+
+#from using differencing we get that diff2.5 model is the best.
+
+#p-values for diff2.5 - all are significant
+(1-pnorm(abs(diff2.5$coef)/sqrt(diag(diff2.5$var.coef))))*2
+
+#best non-differenced/trend model from before accuracy
+accuracy(ar3)
+
+#for comparison
+tsdisplay(auto.arima(logcars)$res)
+
+```
+Comments on ACF and PACF for deciding which model to iterate next are in the code too. We first take the difference of the data and then look at the residuals. Looking at ACF and PACF for the residuals there is definitely seasonality that needs to be taken care of. Since the trend is rather hard to identify we also try fitting a differened arima model. We include seasonal differencing as well since we have a strong seasonal pattern. 
+Our first iteration of ARIMA(0,1,0)(0,1,0) doesn't pass the Ljung-Box test. Then we try adding AR(1) to the differenced model since there was a spike in PACF for last model. Then since there is strong spike in ACF at 12 we try adding MA(1) to seasonality. In the next iteration we change to AR(2) because of a strong spike in PACF at 2 in last model. As a final iteration we try AR(1) and MA(1) as well becuase our results from auto.arima indicate there is an MA component. 
+
+When compared to the previous model built without differencing, it performs better so we will use ARIMA(1,1,1)x(0,1,1)[12]. The auto.arima ARIMA(1,0,2)(0,1,2)[12] so ours is a lower amount of df. The autoarima does not use first differencing for the trend and seasonal but we thought this would make more sense for our data since it is hard to identify a linear form of a trend in the decomposition earlier and we have strong consistent seasonality. The p-values for our selected model are significant and it's residuals pass the Ljung Box test. 
+The residuals in the model from the auto arima also tend to spike when compared, aka the residuals are similar. Looking at the accuracy measures we see that RMSE and MAPE are the lowest for our selected model when comparing the best model with the trend and all the other differenced models.
+
+
+Below we try a differenced model for unemployment.
+
+```{r}
+une_diff = diff(une_ts)
+tsdisplay(une_diff) #there is strong seasonality in the PACF that could be 
+#S-AR(2) since there are 2 spikes in the PACF which agrees withe auto.arima
+#model, so we will keep seasonality at S-AR(2).
+
+diff3.1=arima(une_ts,order=c(0,1,0),seasonal=list(order=c(2,0,0)))
+plot(une_ts, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(diff3.1),col="green")
+summary(diff3.1)
+tsdisplay(diff3.1$res)
+Box.test(diff3.1$residuals, type = "Ljung-Box") #passes test
+
+#we try to do AR(1) also because of the PACF of the original data but are met 
+#with an error with non-finite values below
+
+#diff3.5=arima(une_ts,order=c(1,1,0),seasonal=list(order=c(2,0,0)))
+#plot(une_ts, xlab="Time", lwd=1, col='skyblue3')
+#lines(fitted(diff3.5),col="green")
+#summary(diff3.5)
+#tsdisplay(diff3.5$res)
+#Box.test(diff3.5$residuals, type = "Ljung-Box")
+
+#we add MA(1) instead to see if it will calculate.
+diff3.4=arima(une_ts,order=c(0,1,1),seasonal=list(order=c(2,0,0)))
+plot(une_ts, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(diff3.4),col="green")
+summary(diff3.4)
+tsdisplay(diff3.4$res)
+Box.test(diff3.4$residuals, type = "Ljung-Box") #passes test
+#It works but we see some major spikes in the PACF of residuals.
+
+
+#Since we saw some spikes still we add AR(1) since that was what we thought
+#it would be originally
+diff3.7=arima(une_ts,order=c(1,1,1),seasonal=list(order=c(2,0,0)))
+plot(une_ts, xlab="Time", lwd=1, col='skyblue3')
+lines(fitted(diff3.7),col="green")
+summary(diff3.7)
+tsdisplay(diff3.7$res)
+Box.test(diff3.7$residuals, type = "Ljung-Box") #passes test
+
+accuracy(diff3.1)
+accuracy(diff3.4)
+accuracy(diff3.7)
+
+AIC(diff3.1, diff3.4, diff3.7) #diff3.7 is lowest
+
+accuracy(uar3)
+
+```
+
+We start of with S-AR(2) and an AR(0,1,0) since this is what most likely could be a good model when looking at the ACF and PACF of residuals from the differenced data, which is also in line with what the auro arima suggests. 
+
+Comments on ACF and PACF for deciding which model to iterate next are in the code also. For our next iteration we try to do AR(1) also because of the PACF of the original data but are met with an error with non-finite values. Then we try to add an MA(1) to see if it will calculate with guidance from the auto.arima so that we get finite values. Since we sitll see spikes in the residuals of that iteration we add AR(1) since that was we thought a plausiable model would be for the original data in the beginning. 
+
+We eventually end up with ARIMA(1,1,1)(2,0,0)[12]. This lines up with what we get from the auto arima. 
+Looking at the accuracy measures we see that ARIMA(1,1,1)(2,0,0)[12] our chosen model has the lowst RMSE, but not the lowest MAPE, although all the values are very close together. Nevertheless we will stick with the chosen model since the AIC is lowest and it is suggested by the auto.arima as well. 
+
+When we compare accuracy with the trend model with no differencing that we selected before, which is UAR3, we see that RMSE and MAPE are both a tiny bit lower. However, since we were dubious about the trend since the data doesn't seem to show a very obvious trend, we decide on the ARIMA(1,1,1)(2,0,0)[12] as our final model for unemployment.
+
+
+## 4. Plot the respective residuals vs. fitted values and discuss your observations.\
+From the residual vs. fit values graph for Total car sales below, we se an even spread across all the values. The mean is near 0, which there is no significant correlation in the residuals series. It also shows the variation of the residuals stay pretty much constant across historical data, except a few large noticable spikes at fit_values of 7.03, 7.21, and 7.37. These spikes are not large enough to consider as outlier or enought to impact the over all weight of our residuals, which we will treat as constant. 
+```{r}
+library(ggplot2)
+total_car  <- data.frame(residuals=diff2.5$residuals, fit_values=fitted(diff2.5))
+ggplot(total_car, aes(x=fit_values, y=residuals))+
+  geom_line()+
+  ggtitle("Residuals vs Fitted Values Total Car Sales")+
+  geom_hline(yintercept = mean(diff2.5$residuals), linetype="dashed", color="red")+
+  ylim(-1,1)
+
+
+#plot(logcars)
+#lines(t,diff2.5$fit,col="red3",lwd=2)
+plot(t, diff2.5$res, ylab="Quadratic fit Residuals",xlab="Time", type = 'l')
+abline(a=0, b=0, lwd=2, col="red")
+```
+From the residual vs. fit values graph for Unemployment rate below, we see pretty even spread across all the values. However, near the lower fitted value there seems to be a bit less variation in error. Overall, if we look at the band between [-0.25 and 0.25], most seems to fall in that window. This makes us believe that variance is pretty constant here. The mean is 0, and from the Ljung Box test previously conducted we know there is no serial correlation in the residuals. We see a large spike at the end over time which is from the COVID-19 pandemic.
+```{r}
+library(ggplot2)
+total_unemploy  <- data.frame(residuals=diff3.7$residuals, fit_values=fitted(diff3.7))
+ggplot(total_unemploy, aes(x=fit_values, y=residuals))+
+  geom_line()+
+  ggtitle("Residuals vs Fitted Values UNRATE ")+
+  geom_hline(yintercept = mean(diff3.7$residuals), linetype="dashed", color="red")+
+  ylim(-1,1)
+
+#plot(une_ts)
+#lines(t, diff3.7$fit, col="red", lwd=2)
+plot(t,diff3.7$res, ylab="Quadratic fit Residuals",xlab="Time",type = 'l')
+abline(a=0, b=0, lwd=2, col="red")
+```
+
+
+## 5. Plot the ACF and PACF of the respective residuals and interpret the plots.\
+Interpret model for Total Car Sales, which is diff2.5\
+
+As seen below, the Ljung-Box test tells us that the residuals are not serially correlated. We also see the residuals are normally distributed pretty much. When we look at the PACF and ACF we see that most of the lags fall under the lines (are near 0) so they are not significant. When compared to the residuals of model chosen my auto.arima, we find that the auto.arima also has a similar PACF and ACF (numbers of lags that are technically significant). Since they are close to 0 here (same as auto.arima), we accept this model as the best model still.
+```{r}
+tsdisplay(diff2.5$residuals)
+checkresiduals(diff2.5$residuals)
+Box.test(diff2.5$residuals, type = 'Ljung-Box')
+```
+
+
+Interpret model for Unemployment which is diff3.7\
+
+Our best model here is the same at the auto.arima model. We see that it passes the Ljung-Box test for residuals. It seems like our residuals are a bit narrower than the normal distribution, but that is alright since they are narrower at the mean of the normal distribution. All the ACF and PACF lags are insiginificant.
+```{r}
+tsdisplay(diff3.7$res)
+checkresiduals(diff3.7$res)
+Box.test(diff3.7$residuals, type = 'Ljung-Box')
+```
+
+
+## 6. Plot the respective CUSUM and interpret the plot.\
+We are going to plot the CUSUM for our choosen models: for Total car sales is ARIMA(1,1,1)x(0,1,1) [12] which is diff2.5 model. While Unemployment rate is ARIMA(1,1,1)x(2,0,0)[12] which is diff3.7 model.\
+
+From the plotted CUSUM, we see that the cumulative sum of residuals stays mostly constant.There are no upward or downward drifts of the cumulative sum that cross a boundary line. This does not indicate an out of control process.\
+
+```{r}
+#total car sales
+plot(efp(diff2.5$res~1, type = "Rec-CUSUM"))
+
+```
+
+```{r}
+#unemployment rate
+plot(efp(diff3.7$res~1, type = "Rec-CUSUM"))
+```
+
+
+
+## 7. Plot the respective Recursive Residuals and interpret the plot.\
+We are going to plot the the Recursive Residuals for our choosen models: for Total car sales is ARIMA(1,1,1)x(0,1,1) [12] which is diff2.5 model. While Unemployment rate is ARIMA(1,1,1)x(2,0,0)[12] which is diff3.7 model.\
+
+ The plot of recursive residuals shows that our models are accurate in predicting true values as we do not see much dispersion in residuals. Our model for Car Sales Data is not as reliable for accurate predictions as the one for the Unemployment Data due to the dispersion of the residuals being tighter for the unemployment data. Further, we see some stray residual outliers in higher index values but these are not seen much in the graph overall.\
+```{r}
+##Question 7, recursive plot residuals for Toral Car sales
+car_sales_diff2.5 <- recresid(diff2.5$residuals ~ 1)
+plot(car_sales_diff2.5, pch=16, ylab="Recrusice Residuals")
+```
+
+```{r}
+##Question 7, recursive plot residuals for Unemployment
+unemployment_diff3.7 <- recresid(diff3.7$residuals ~ 1)
+plot(unemployment_diff3.7, pch=16, ylab="Recrusice Residuals")
+```
+
+## 8. For your model, discuss the associated diagnostic statistics.\
+```{r}
+accuracy(diff2.5)
+accuracy(diff3.7)
+```
+
+Previously in question 3 we already compared AIC and BIC when choosing model as well as the measures in the accuracy function. Refer to question 3 for model comparison.
+
+When looking at the measures for our optimal model, we see that RMSE is low given the scale of the variables (both have numbers around 10 for the scale). The MAPE for our cars model is very low, the forecast is only off by 0.8%, which means we could either have a very good model, or there was some overfitting. The MAPE for unemployment is also low, the forecast is off by 5%. The other diagnostics in the accuracy function are also low for both models, and we therefore conclude that the models we chose do a good job of predicting.
+
+Other statistics for the residuals in particular are in questions 4 and 5 above.
+
+## 9. Use your model to forecast 12-steps ahead. Your forecast should include the respective error bands.\
+
+The data forecasted looks very similar to the original data. 
+
+```{r}
+#Total Car Sales
+autoplot(forecast(diff2.5,h=12))
+
+#Unemployment rate
+autoplot(forecast(diff3.7,h=12))
+```
+
+
+## 10. Fit an appropriate VAR model using your two variables. Make sure to show the relevant plots and discuss your results from the.\
+```{r importdata}
+une = read.csv("UNRATENSA.csv")
+cars = read.csv("TOTALNSA.csv")
+cars_ts = ts(cars$TOTALNSA, start = c(1976,1), frequency = 12)
+une_ts = ts(une$UNRATENSA, start = c(1976,1), frequency = 12)
+```
+
+```{r}
+# prep the data for fitting a VAR model
+y = cbind(cars_ts,une_ts)
+#head(y)
+
+y_tot <- data.frame(y)
+#head(y_tot)
+```
+
+
+```{R}
+VARselect(y_tot,25)
+```
+From the result above using AIC as a method of selection we choose 18 as the lag, p=18, and BIC with lag of 13 to construct the multivariate methods, VAR model. However, we will go with AIC selection and choose VAR(18).\
+
+Below will be our graph for the VAR(18) model and the summary for the model. We will look at Correlation matrix of residuals, where it is -0.2456, which if unemployment rate increase we should expected a decrease in Total car sales. This does make sense because people are loosing their jobs and buying cars would not be their top priority.\
+```{R}
+#Fit the graph 
+y_model = VAR(y_tot, p=18)
+summary(y_model)
+#plot(y_model)
+```
+```{r}
+quartz()
+plot(y_model)
+```
+
+
+### 11. Compute, plot, interpret the respective impulse response functions.\
+**Explanation:**\
+
+
+```{r}
+library(vars)
+irf(y_model)
+```
+
+```{r}
+plot(irf(y_model, n.ahead=12))
+
+```
+
+Using the graphs below, we saw Orthogonal Impulse Response from cars_ts decline rapidly from period 0 to 2 then smooth out from 2 to 11, not till period 11 to 12 we saw a sharp decrease. Notice that is not much in response to unemployment when we have an increase in car sales is nothing much at all, almost close to zero. 
+```{r}
+feir1 <- irf(y_model, impulse = "cars_ts", response = "une_ts",
+            n.ahead = 12, ortho = FALSE, runs = 1000)
+plot(feir1)
+```
+Here, when we increase unemployment from period 0 to 2, we saw a large decrease in total car sales. Then the number of car sales will increase back again as unemployment keeps increasing (period 2 to 6). This keeps repeating which tells us that the initial shocks of raise in unemployment will have the most impact on the number of car sales but then as time goes on, it does not weighted as much.\
+```{r}
+feir2 <- irf(y_model, impulse ="une_ts" , response = "cars_ts",
+             n.ahead = 12, ortho = FALSE, runs = 1000)
+plot(feir2)
+```
+
+
+### 12. Perform a Granger-Causality test on your variables and discuss your results from the test\
+
+Using Granger-Causality test and the graphs below, we are more interst in the FEVD for UNRATE_not_ts than FEVD for car_Sales_ts because in FEVD for car_Sales_ts does not tell us much about the relationship or causation on unemploymnet rate. However, in FEVD for UNRATE_not_ts in decomposition at 1 horizon fluctuation almost as much as 96% by umeploymnet and about 4% by car sales. The percentage increase as we go up to 10. In another words that Unemployment rate is more useful to determining the forecast for Total Car Sales. 
+
+```{r}
+# test to see if umeployment granger-cause Total car sales 
+grangertest(une_ts ~ cars_ts, order=18)
+
+#plot the variance 
+plot(fevd(y_model, n.head=12))
+```
+
+
+### 13. Use your VAR model to forecast 12-steps ahead. Your forecast should include the respective error
+bands. Comment on the differences between the two forecasts (VAR vs. ARIMA).\
+
+Looking at both VAR(18) and ARIMA() models for both Total car Sales and Umeployment rate, we noticed that VAR(18) model is a better forecasting since it gives us a larger intervals in both Total car Sales and Unemploymnet rate. In forecast, having a good intervals allows us to understand the future better, so in this case VAR(18) would be a better choice.\
+
+```{r}
+var.predict <- predict(object = y_model, n.ahead=12, ci=0.95)
+var.predict
+#plot
+plot(var.predict)
+```
+
+
+```{r}
+#Total Car Sales
+autoplot(forecast(diff2.5,h=12))
+
+#Unemployment rate
+autoplot(forecast(diff3.7,h=12))
+```
+Look for the R-squared for both variables:\
+```{r}
+summary(y_model$varresult$cars_ts)$adj.r.squared
+# result: adjust-R.squared = 0.8136422
+
+summary(y_model$varresult$une_ts)$adj.r.squared
+# adjust R.squared = 0.9221744
+
+accuracy(y_model$varresult[[1]])
+
+```
+Look for the R-squared for both variables:\
+```{r}
+summary(diff2.5)
+# result: adjust-R.squared = 0.8136422
+
+summary(diff3.7)
+# adjust R.squared = 0.9221744
+```
+
+
+### 14: Backtest your ARIMA model. Begin by partitioning your data set into an estimation set and a
+prediction set.\
+
+To set up our test/train, we use 8/2 ratio, where around 80% of the data set will be use for estimation and around 20% for prediction. Some of our computers were having computation memory issues with a 2/3 split so we decided to lessen the amount of predictions being backtested. 
+
+part 14a.Use a recursive backtesting scheme, and forecast 12-steps ahead at each iteration. Compute the mean absolute percentage error at each step. Provide a plot showing the MAPE over each Iteration.\
+
+Recursive back test for Total Car Sales, we are using the log of Total Car Sales here because we want to reduce the scales.\
+
+
+To calculate MAPE, we take the errors at step h = 12 only and calculate the absolute value divided by the actuals values, and then take the cumulative mean of those numbers.
+
+```{r}
+library(MTS)
+Cars <- backtest(diff2.5, logcars, 420, h=12)
+#Cars$error
+
+cars_error = data.frame(Cars$error)
+cars_error = cars_error%>% slice(1:107)
+cars_error$actual = logcars[432:538]
+
+cars_error$abs = abs(cars_error$X12/cars_error$actual)
+cars_error$mape = cummean(cars_error$abs)
+
+plot(cars_error$mape, type = 'l', main = 'Rescursive: MAPE for Cars at h = 12 for 107 iterations')
+
+
+```
+
+
+Recurive back test for Unemployment rate:
+Due to computation difficulties giving non-finite values we had to change the train test to around 90% and the test set to around 10% of the data.
+```{r}
+library(MTS)
+Unem <- backtest(diff3.7, une_ts, 478, h=12)
+#Unem$error
+
+unem_error = data.frame(Unem$error)
+unem_error = unem_error%>% slice(1:49)
+unem_error$actual = une_ts[490:538]
+
+unem_error$abs = abs(unem_error$X12/unem_error$actual)
+unem_error$mape = cummean(unem_error$abs)
+
+plot(unem_error$mape, type = 'l', main = 'Rescursive: MAPE for Unemployment at h = 12 for 49 iterations')
+
+```
+
+
+
+part 14b.Shorten your forecast horizon to only 1-step ahead. Compute the absolute percentage error at each iteration, and plot.\
+
+Here is for Total cars sales:\
+```{r}
+Cars1 <- backtest(diff2.5, logcars, 431, h=1)
+#Cars1$error
+
+cars1_error = data.frame(Cars1$error)
+cars1_error = cars1_error%>% slice(1:107)
+cars1_error$actual = logcars[432:538]
+
+cars1_error$abs = abs(cars1_error$Cars1.error/cars1_error$actual)
+cars1_error$mape = cummean(cars1_error$abs)
+
+plot(cars1_error$mape, type = 'l', main = 'Rescursive: MAPE for Cars at h = 1 for 107 iterations')
+
+```
+
+Below is to look for unemployment rate. We had an issue where if we forecasted 49 iterations for h = 12, the backtest using h = 1 would throw an error for h = 1 of non-finite finite values. This was the case with 50,51,52,53 as well, so we decided to settle on 48 iterations for h = 1 and 49 for h = 12. We believe we have enough observations so that this difference will not have a huge impact. 
+
+```{r}
+Unem1 <- backtest(diff3.7, une_ts, 490, h=1)
+#Unem1$error
+
+unem1_error = data.frame(Unem1$error)
+unem1_error$actual = une_ts[491:538]
+
+unem1_error$abs = abs(unem1_error$Unem1.error/unem1_error$actual)
+unem1_error$mape = cummean(unem1_error$abs)
+
+plot(unem1_error$mape, type = 'l', main = 'Rescursive: MAPE for Unemployment at h = 1 for 48 iterations')
+
+```
+
+part 14c.Based on your findings above, does your model perform better at longer or shorter horizon
+forecasts?\
+
+The Mean Absolute Percentage Error (MAPE) is a measure of how accurate a forecast is. Based on our findings, our model performs better at lower h values for both our Unemployment Data and our Car Sales Data. If we look at both MAPE graphs, we see lower error percentage numbers for both datasets at shorter horizon forecasts. However, the difference in MAPE is not large between h = 1 and h = 12.
+
+part 14d.\
+Now test your model using a moving window backtesting scheme. Forecast out 12-steps ahead at each iteration, and plot the forecast errors observed at each iteration. Repeat for a 1-step ahead forecast horizon. Provide plots of both.
+
+```{r}
+window_backtesting <- function(model, data, orig, h, xreg=NULL,fixed = NULL, inc.mean = TRUE, 
+                               reest = 1){
+  if(!inherits(data,"ts"))stop("data must be a time series object")
+  arma_order <- model$arma
+  regor = arma_order[c(1, 6, 2)]
+  seaor = list(order = arma_order[c(3, 7, 4)],  period = arma_order[5])
+  T = length(data)
+  if (orig > T) 
+    orig = T
+  if (h < 1) 
+    h = 1
+  rmse = numeric(h)
+  mabso = numeric(h)
+  
+  nori = T - orig
+  err = matrix(0, nori, h)
+  fcst = matrix(0, nori, h)
+  jlast = T - 1
+  time_vec <- time(data)
+  ireest <- reest
+  for (n in orig:jlast) {
+    jcnt = n - orig + 1
+    x <- window(data, time_vec[jcnt], time_vec[n]) 
+    if (is.null(xreg)) 
+      pretor = NULL
+    else pretor = xre[jcnt:n]
+    if (ireest == reest) {
+      mm = arima(x, order = regor, seasonal = seaor, xreg = pretor, 
+                 fixed = fixed, include.mean = inc.mean)
+      ireest <- 0
+    }
+    else {
+      ireest <- ireest + 1
+    }
+    if (is.null(xreg)) {
+      nx = NULL
+    }
+    else {
+      nx = xreg[(n + 1):(n + h)]
+    }
+    fore = predict(mm, h, newxreg = nx)
+    kk = min(T, (n + h))
+    nof = kk - n
+    pred = fore$pred[1:nof]
+    obsd = data[(n + 1):kk]
+    err[jcnt, 1:nof] = obsd - pred
+    fcst[jcnt, 1:nof] = pred
+  }
+  for (i in 1:h) {
+    iend = nori - i + 1
+    tmp = err[1:iend, i]
+    mabso[i] = sum(abs(tmp))/iend
+    rmse[i] = sqrt(sum(tmp^2)/iend)
+  }
+  print("RMSE of out-of-sample forecasts")
+  print(rmse)
+  print("Mean absolute error of out-of-sample forecasts")
+  print(mabso)
+  backtest <- list(origin = orig, error = err, forecasts = fcst, 
+                   rmse = rmse, mabso = mabso, reest = reest)
+}
+
+```
+
+Window backtesting for cars using h = 12 and corresponding MAPE plot.
+
+```{r}
+Carsw <- window_backtesting(diff2.5, logcars, 420, h=12)
+
+cars_w_error = data.frame(Carsw$error)
+  
+cars_w_error = cars_w_error%>% slice(1:107)
+cars_w_error$actual = logcars[432:538]
+
+cars_w_error$abs = abs(cars_w_error$X12/cars_w_error$actual)
+cars_w_error$mape = cummean(cars_w_error$abs)
+
+plot(cars_w_error$mape, type = 'l', main = 'Window: MAPE for Cars at h = 12 for 107 iterations')
+lines(cars_error$mape, type = 'l', col = 'green')
+legend('topright',legend=c("windows", "recursive"),
+       col=c("black", "green"), lty=1:2, cex=0.8)
+```
+Window testing for cars using h = 1 and the MAPE plot.
+
+```{r}
+Cars1w <- window_backtesting(diff2.5, logcars, 431, h=1)
+Cars1w$error
+
+cars1_w_error = data.frame(Cars1w$error)
+cars1_w_error = cars1_w_error%>% slice(1:107)
+cars1_w_error$actual = logcars[432:538]
+
+cars1_w_error$abs = abs(cars1_w_error$Cars1w.error/cars1_w_error$actual)
+cars1_w_error$mape = cummean(cars1_w_error$abs)
+
+plot(cars1_w_error$mape, type = 'l', main = 'Window: MAPE for Cars at h = 1 for 107 iterations')
+lines(cars1_error$mape, type = 'l', col = 'green')
+legend('topright',legend=c("windows", "recursive"),
+       col=c("black", "green"), lty=1:2, cex=0.8)
+```
+Window backtesting for unemployment using h = 12 and corresponding MAPE plot.
+
+```{r}
+Unemw <- window_backtesting(diff3.7, une_ts, 478, h=12)
+Unemw$error
+
+unem_w_error = data.frame(Unemw$error)
+unem_w_error = unem_w_error%>% slice(1:49)
+unem_w_error$actual = une_ts[490:538]
+
+unem_w_error$abs = abs(unem_w_error$X12/unem_w_error$actual)
+unem_w_error$mape = cummean(unem_w_error$abs)
+
+plot(unem_w_error$mape, type = 'l', main = 'Window: MAPE for Unemployment at h = 12 for 49 iterations')
+lines(unem_error$mape, type = 'l', col = 'green')
+legend('topright',legend=c("windows", "recursive"),
+       col=c("black", "green"), lty=1:2, cex=0.8)
+```
+
+Window backtesting for unemployment using h = 1 and corresponding MAPE plot.
+```{r}
+Unem1w <- window_backtesting(diff3.7, une_ts, 490, h=1)
+Unem1w$error
+
+unem1_w_error = data.frame(Unem1w$error)
+unem1_w_error$actual = une_ts[491:538]
+
+unem1_w_error$abs = abs(unem1_w_error$Unem1w.error/unem1_w_error$actual)
+unem1_w_error$mape = cummean(unem1_w_error$abs)
+
+plot(unem1_w_error$mape, type = 'l', main = 'Window: MAPE for Unemployment at h = 1 for 48 iterations')
+lines(unem1_error$mape, type = 'l', col = 'green')
+legend('topright',legend=c("windows", "recursive"),
+       col=c("black", "green"), lty=1:2, cex=0.8)
+```
+
+
+
+Part 14e. How do the errors found using a recursive backtesting scheme compare with the errors observed
+using a moving average backtesting scheme? Which scheme showed higher errors overall, and what does that tell you about your model?\
+
+The errors between the two schemes are very similar as shown by our plots above, which means that there are not major irregularities in our data that are particular to any one time instance. The windows backtesting showed very very slightly higher errors, but since they are essentially the same we believe that our models chosen are robust.
+
+
+## Conclusions and Future Work\
+
+Using ARIMA, VAR(18), and both Recursive and Window backtesting methods, we get that our models are overall robust.  However, using  VAR(18) allows us to further comprehend the correlation between our two time series (Total Car Sales and Unemployment Rate). Nonetheless, this does not mean that one forecast method is better than the other, we should use and choose the one that has the smallest RSME, MAPE etc in order to assure that we are maximizing efficiency. In our case study for predicting car sales, our ARIMA model had lower MAPE 0.8% and our VAR model had a MAPE of 5.6%. Our ARIMA model is better in terms of forecasting accuracy but there is a possibility for overfitting the data as well. Overall, both model have a pretty good MAPE, as they are both under 10%. 
+Our unemployment ARIMA model had a MAPE of 5%, which is also under 10% and good as well.
+We conclude that there is a correlation between Unemployment Rate and the Total Car Sales on a monthly basis. We confirm our hypothesis and are able to see the forecast and the negative relationship between the two time series is important. 
+
+For future works, we can look into how specifically covid-19 has affected the models since the government are heavily subsidizing personal income. We can also look into consumption other than car sales. We can also look at personal income instead of unemployment to see if it differs from out current results. 
+
+
+\newpage
+
+# References (include the source of your data and any other resources).\
+The data we use come from the FRED website\
+
+https://fred.stlouisfed.org/series/TOTALNSA
+https://fred.stlouisfed.org/series/UNRATENSA
+
+Other resources included class notes and online forums.
+
+
+
+
+
